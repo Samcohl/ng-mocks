@@ -49,7 +49,6 @@ const getAllKeys = <T extends { [key: string]: any }>(instance: T): Array<keyof 
       }
     }
   } else {
-    // Fallback for environments without Object.keys
     for (const key in instance) {
       if (Object.prototype.hasOwnProperty.call(instance, key) && propsArray.push) {
         propsArray.push(key);

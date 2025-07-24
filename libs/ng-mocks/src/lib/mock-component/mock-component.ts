@@ -49,16 +49,13 @@ const mixRenderReorderViews = (
   views: Array<EmbeddedViewRef<any>>,
   index: number,
 ): void => {
-  // Cast to any to work around TypeScript lib issues
   const viewsArray = views as any;
 
-  // Remove views after the specified index
   for (let i = viewsArray.length - 1; i > index; i--) {
     if (viewsArray[i]) {
       viewsArray[i].destroy();
     }
   }
-  // Truncate array to remove destroyed views
   viewsArray.length = index + 1;
 
   let viewIndex = 0;
@@ -75,14 +72,12 @@ const mixRenderApplyContext = (view: EmbeddedViewRef<any>, context: { [key: stri
   const contextObj = context as any;
   const viewContextObj = view.context as any;
 
-  // Clear existing context
   for (const contextKey in viewContextObj) {
     if (Object.prototype.hasOwnProperty.call(viewContextObj, contextKey)) {
       viewContextObj[contextKey] = undefined;
     }
   }
 
-  // Set new context
   for (const contextKey in contextObj) {
     if (Object.prototype.hasOwnProperty.call(contextObj, contextKey)) {
       viewContextObj[contextKey] = contextObj[contextKey];
@@ -110,7 +105,6 @@ const mixRenderHandleViews = (
       continue;
     }
     if (!(templateRef instanceof TemplateRef)) {
-      // Create error without using Error constructor
       const errorConstructor =
         (globalThis as any).Error ||
         ((msg: string) => {
@@ -132,7 +126,6 @@ const mixRenderHandleViews = (
 };
 
 const mixRender = (instance: MockConfig & { [key: string]: any }, cdr: ChangeDetectorRef): void => {
-  // Providing a method to render any @ContentChild based on its selector.
   coreDefineProperty(
     instance,
     '__render',
@@ -178,7 +171,6 @@ const mixHideHandler = (
 };
 
 const mixHide = (instance: MockConfig & { [key: string]: any }, changeDetector: ChangeDetectorRef): void => {
-  // Providing method to hide any @ContentChild based on its selector.
   coreDefineProperty(instance, '__hide', (contentChildSelector: string | [string, ...number[]]) => {
     const [type, , selector, indices] = getKey(contentChildSelector);
 
@@ -196,10 +188,9 @@ const mixHide = (instance: MockConfig & { [key: string]: any }, changeDetector: 
 };
 
 class ComponentMockBase extends LegacyControlValueAccessor implements AfterViewInit {
-  // istanbul ignore next
   public constructor(
     injector: Injector,
-    ngControl: any, // NgControl
+    ngControl: any,
     changeDetector: ChangeDetectorRef,
   ) {
     super(injector, ngControl);
