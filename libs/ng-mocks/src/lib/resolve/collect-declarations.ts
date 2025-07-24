@@ -16,6 +16,14 @@ interface Declaration {
   queries: Record<string, any>;
   decorators: Array<'Injectable' | 'Pipe' | 'Directive' | 'Component' | 'NgModule'>;
   standalone?: boolean;
+  // Support des signaux Angular
+  signals?: {
+    inputs?: string[];
+    outputs?: string[];
+    models?: string[];
+    contentChild?: string[];
+    contentChildren?: string[];
+  };
   [key: string]: any;
 }
 
@@ -60,16 +68,16 @@ const parseParameters = (
   def: {
     __parameters__?: Array<null | Array<
       | {
-          attributeName: string;
-          ngMetadataName: 'Attribute';
-        }
+        attributeName: string;
+        ngMetadataName: 'Attribute';
+      }
       | {
-          token: AnyDeclaration<any>;
-          ngMetadataName: 'Inject';
-        }
+        token: AnyDeclaration<any>;
+        ngMetadataName: 'Inject';
+      }
       | {
-          ngMetadataName: 'Optional';
-        }
+        ngMetadataName: 'Optional';
+      }
     >>;
   },
   declaration: Declaration,
@@ -135,96 +143,96 @@ const parseDecorators = (
 
 const parsePropMetadataParserFactoryProp =
   (key: 'inputs' | 'outputs') =>
-  (
-    _: string,
-    name: string,
-    decorator: {
-      alias?: string;
-      required?: boolean;
-      bindingPropertyName?: string;
-    },
-    declaration: Declaration,
-  ): void => {
-    const { alias, required } = funcDirectiveIoParse({
-      name,
-      alias: decorator.alias ?? decorator.bindingPropertyName,
-      required: decorator.required,
-    });
+    (
+      _: string,
+      name: string,
+      decorator: {
+        alias?: string;
+        required?: boolean;
+        bindingPropertyName?: string;
+      },
+      declaration: Declaration,
+    ): void => {
+      const { alias, required } = funcDirectiveIoParse({
+        name,
+        alias: decorator.alias ?? decorator.bindingPropertyName,
+        required: decorator.required,
+      });
 
-    const normalizedDef = funcDirectiveIoBuild({ name, alias, required });
+      const normalizedDef = funcDirectiveIoBuild({ name, alias, required });
 
-    let add = true;
-    for (const def of declaration[key]) {
-      if (def === normalizedDef) {
-        add = false;
-        break;
+      let add = true;
+      for (const def of declaration[key]) {
+        if (def === normalizedDef) {
+          add = false;
+          break;
+        }
+
+        const { name: defName, alias: defAlias, required: defRequired } = funcDirectiveIoParse(def);
+        if (defName === name && defAlias === alias && defRequired === required) {
+          add = false;
+          break;
+        }
       }
 
-      const { name: defName, alias: defAlias, required: defRequired } = funcDirectiveIoParse(def);
-      if (defName === name && defAlias === alias && defRequired === required) {
-        add = false;
-        break;
+      if (add) {
+        declaration[key].unshift(normalizedDef);
       }
-    }
-
-    if (add) {
-      declaration[key].unshift(normalizedDef);
-    }
-  };
+    };
 const parsePropMetadataParserInput = parsePropMetadataParserFactoryProp('inputs');
 const parsePropMetadataParserOutput = parsePropMetadataParserFactoryProp('outputs');
 
 const parsePropMetadataParserFactoryQueryChild =
   (isViewQuery: boolean) =>
-  (
-    ngMetadataName: string,
-    prop: string,
-    decorator: {
-      read?: any;
-      selector: string;
-      static?: boolean;
-    },
-    declaration: Declaration,
-  ): void => {
-    if (!declaration.queries[prop]) {
-      declaration.queries[prop] = {
-        isViewQuery,
-        ngMetadataName,
-        selector: decorator.selector,
-        ...(decorator.read === undefined ? {} : { read: decorator.read }),
-        ...(decorator.static === undefined ? {} : { static: decorator.static }),
-      };
-    }
-  };
+    (
+      ngMetadataName: string,
+      prop: string,
+      decorator: {
+        read?: any;
+        selector: string;
+        static?: boolean;
+      },
+      declaration: Declaration,
+    ): void => {
+      if (!declaration.queries[prop]) {
+        declaration.queries[prop] = {
+          isViewQuery,
+          ngMetadataName,
+          selector: decorator.selector,
+          ...(decorator.read === undefined ? {} : { read: decorator.read }),
+          ...(decorator.static === undefined ? {} : { static: decorator.static }),
+        };
+      }
+    };
 const parsePropMetadataParserContentChild = parsePropMetadataParserFactoryQueryChild(false);
 const parsePropMetadataParserViewChild = parsePropMetadataParserFactoryQueryChild(true);
 
 const parsePropMetadataParserFactoryQueryChildren =
   (isViewQuery: boolean) =>
-  (
-    ngMetadataName: string,
-    prop: string,
-    decorator: {
-      descendants?: any;
-      emitDistinctChangesOnly?: boolean;
-      read?: any;
-      selector: string;
-    },
-    declaration: Declaration,
-  ): void => {
-    if (!declaration.queries[prop]) {
-      declaration.queries[prop] = {
-        isViewQuery,
-        ngMetadataName,
-        selector: decorator.selector,
-        ...(decorator.descendants === undefined ? {} : { descendants: decorator.descendants }),
-        ...(decorator.emitDistinctChangesOnly === undefined
-          ? {}
-          : { emitDistinctChangesOnly: decorator.emitDistinctChangesOnly }),
-        ...(decorator.read === undefined ? {} : { read: decorator.read }),
-      };
-    }
-  };
+    (
+      ngMetadataName: string,
+      prop: string,
+      decorator: {
+        descendants?: any;
+        emitDistinctChangesOnly?: boolean;
+        read?: any;
+        selector: string;
+      },
+      declaration: Declaration,
+    ): void => {
+      if (!declaration.queries[prop]) {
+        declaration.queries[prop] = {
+          isViewQuery,
+          ngMetadataName,
+          selector: decorator.selector,
+          ...(decorator.descendants === undefined ? {} : { descendants: decorator.descendants }),
+          ...(decorator.emitDistinctChangesOnly === undefined
+            ? {}
+            : { emitDistinctChangesOnly: decorator.emitDistinctChangesOnly }),
+          ...(decorator.read === undefined ? {} : { read: decorator.read }),
+        };
+      }
+    };
 const parsePropMetadataParserContentChildren = parsePropMetadataParserFactoryQueryChildren(false);
 const parsePropMetadataParserViewChildren = parsePropMetadataParserFactoryQueryChildren(true);
 
@@ -340,23 +348,23 @@ const parsePropDecoratorsParserOutput = parsePropDecoratorsParserFactoryProp('ou
 
 const parsePropDecoratorsParserFactoryQuery =
   (isViewQuery: boolean) =>
-  (
-    ngMetadataName: string,
-    prop: string,
-    decorator: {
-      args: [string] | [string, any];
-    },
-    declaration: Declaration,
-  ): void => {
-    if (!declaration.queries[prop]) {
-      declaration.queries[prop] = {
-        isViewQuery,
-        ngMetadataName,
-        selector: decorator.args[0],
-        ...decorator.args[1],
-      };
-    }
-  };
+    (
+      ngMetadataName: string,
+      prop: string,
+      decorator: {
+        args: [string] | [string, any];
+      },
+      declaration: Declaration,
+    ): void => {
+      if (!declaration.queries[prop]) {
+        declaration.queries[prop] = {
+          isViewQuery,
+          ngMetadataName,
+          selector: decorator.args[0],
+          ...decorator.args[1],
+        };
+      }
+    };
 const parsePropDecoratorsParserContent = parsePropDecoratorsParserFactoryQuery(false);
 const parsePropDecoratorsParserView = parsePropDecoratorsParserFactoryQuery(true);
 

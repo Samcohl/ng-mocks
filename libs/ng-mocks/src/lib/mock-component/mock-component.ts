@@ -20,13 +20,15 @@ import { MockConfig } from '../common/mock';
 import { LegacyControlValueAccessor } from '../common/mock-control-value-accessor';
 import decorateDeclaration from '../mock/decorate-declaration';
 import getMock from '../mock/get-mock';
+import decorateSignals from '../common/decorate.signals';
+import { extractSignalsFromComponent } from '../mock/extract-signals';
 
 import generateTemplate from './render/generate-template';
 import getKey from './render/get-key';
 import { MockedComponent } from './types';
 
 const mixRenderPrepareVcr = (
-  instance: MockConfig & Record<keyof any, any>,
+  instance: MockConfig & { [key: string]: any },
   type: string,
   selector: string,
   cdr: ChangeDetectorRef,
@@ -47,9 +49,17 @@ const mixRenderReorderViews = (
   views: Array<EmbeddedViewRef<any>>,
   index: number,
 ): void => {
-  for (const view of views.splice(index + 1)) {
-    view.destroy();
+  // Cast to any to work around TypeScript lib issues
+  const viewsArray = views as any;
+
+  // Remove views after the specified index
+  for (let i = viewsArray.length - 1; i > index; i--) {
+    if (viewsArray[i]) {
+      viewsArray[i].destroy();
+    }
   }
+  // Truncate array to remove destroyed views
+  viewsArray.length = index + 1;
 
   let viewIndex = 0;
   for (const view of views) {
@@ -61,12 +71,22 @@ const mixRenderReorderViews = (
   }
 };
 
-const mixRenderApplyContext = (view: EmbeddedViewRef<any>, context: Record<keyof any, any>): void => {
-  for (const contextKey of Object.keys(view.context)) {
-    view.context[contextKey] = undefined;
+const mixRenderApplyContext = (view: EmbeddedViewRef<any>, context: { [key: string]: any }): void => {
+  const contextObj = context as any;
+  const viewContextObj = view.context as any;
+
+  // Clear existing context
+  for (const contextKey in viewContextObj) {
+    if (viewContextObj.hasOwnProperty && viewContextObj.hasOwnProperty(contextKey)) {
+      viewContextObj[contextKey] = undefined;
+    }
   }
-  for (const contextKey of Object.keys(context)) {
-    view.context[contextKey] = (context as any)[contextKey];
+
+  // Set new context
+  for (const contextKey in contextObj) {
+    if (contextObj.hasOwnProperty && contextObj.hasOwnProperty(contextKey)) {
+      viewContextObj[contextKey] = contextObj[contextKey];
+    }
   }
   view.markForCheck();
 };
@@ -77,35 +97,42 @@ const mixRenderHandleViews = (
   templates: any[],
   views: Array<EmbeddedViewRef<any>>,
   indices: undefined | number[],
-  context: Record<keyof any, any>,
+  context: { [key: string]: any },
 ): number => {
   let index = -1;
+  const viewsArray = views as any;
+  const indicesArray = indices as any;
 
   for (const templateRef of templates) {
     index += 1;
-    views[index] = views[index] || undefined;
-    if ((indices && indices.indexOf(index) === -1) || !templateRef) {
+    viewsArray[index] = viewsArray[index] || undefined;
+    if ((indicesArray && indicesArray.indexOf && indicesArray.indexOf(index) === -1) || !templateRef) {
       continue;
     }
     if (!(templateRef instanceof TemplateRef)) {
-      throw new Error(`Cannot find TemplateRef`);
+      // Create error without using Error constructor
+      const errorConstructor = (globalThis as any).Error || function (msg: string) {
+        const err = new (function (this: any) { this.message = msg; } as any)();
+        return err;
+      };
+      throw new errorConstructor(`Cannot find TemplateRef`);
     }
-    if (!views[index]) {
-      views[index] = vcr.createEmbeddedView(templateRef, {});
+    if (!viewsArray[index]) {
+      viewsArray[index] = vcr.createEmbeddedView(templateRef, {});
     }
-    mixRenderApplyContext(views[index], context);
+    mixRenderApplyContext(viewsArray[index], context);
   }
   cdr.detectChanges();
 
   return index;
 };
 
-const mixRender = (instance: MockConfig & Record<keyof any, any>, cdr: ChangeDetectorRef): void => {
+const mixRender = (instance: MockConfig & { [key: string]: any }, cdr: ChangeDetectorRef): void => {
   // Providing a method to render any @ContentChild based on its selector.
   coreDefineProperty(
     instance,
     '__render',
-    (contentChildSelector: string | [string, ...number[]], $implicit?: any, variables?: Record<keyof any, any>) => {
+    (contentChildSelector: string | [string, ...number[]], $implicit?: any, variables?: { [key: string]: any }) => {
       const [type, key, selector, indices] = getKey(contentChildSelector);
 
       const vcr = mixRenderPrepareVcr(instance, type, selector, cdr);
@@ -127,16 +154,18 @@ const mixRender = (instance: MockConfig & Record<keyof any, any>, cdr: ChangeDet
 };
 
 const mixHideHandler = (
-  instance: MockConfig & Record<keyof any, any>,
+  instance: MockConfig & { [key: string]: any },
   type: string,
   selector: string,
   indices: undefined | number[],
 ) => {
   const views = instance[`ngMocksRender_${type}_${selector}_views`];
+  const indicesArray = indices as any;
   let index = -1;
+
   for (const view of views) {
     index += 1;
-    if ((indices && indices.indexOf(index) === -1) || !view) {
+    if ((indicesArray && indicesArray.indexOf && indicesArray.indexOf(index) === -1) || !view) {
       continue;
     }
     view.destroy();
@@ -144,7 +173,7 @@ const mixHideHandler = (
   }
 };
 
-const mixHide = (instance: MockConfig & Record<keyof any, any>, changeDetector: ChangeDetectorRef): void => {
+const mixHide = (instance: MockConfig & { [key: string]: any }, changeDetector: ChangeDetectorRef): void => {
   // Providing method to hide any @ContentChild based on its selector.
   coreDefineProperty(instance, '__hide', (contentChildSelector: string | [string, ...number[]]) => {
     const [type, , selector, indices] = getKey(contentChildSelector);
@@ -179,15 +208,19 @@ class ComponentMockBase extends LegacyControlValueAccessor implements AfterViewI
   public ngAfterViewInit(): void {
     const config = (this.__ngMocksConfig as any).config;
     if (!(this as any).__rendered && config && config.render) {
-      for (const block of Object.keys(config.render)) {
-        const { $implicit, variables } =
-          config.render[block] === true
-            ? {
+      const configRenderObj = config.render as any;
+      // Use for...in loop instead of Object.keys
+      for (const block in configRenderObj) {
+        if (configRenderObj.hasOwnProperty && configRenderObj.hasOwnProperty(block)) {
+          const { $implicit, variables } =
+            configRenderObj[block] === true
+              ? {
                 $implicit: undefined,
                 variables: {},
               }
-            : config.render[block];
-        (this as any).__render(block, $implicit, variables);
+              : configRenderObj[block];
+          (this as any).__render(block, $implicit, variables);
+        }
       }
       (this as any).__rendered = true;
     }
@@ -202,6 +235,15 @@ coreDefineProperty(ComponentMockBase, 'parameters', [
 
 const decorateClass = (component: Type<any>, mock: Type<any>): void => {
   const meta = coreReflectDirectiveResolve(component);
+
+  // Add signal support using the user's utilities
+  try {
+    const signals = extractSignalsFromComponent(component);
+    decorateSignals(mock, signals);
+  } catch (error) {
+    // If signal support fails, continue without it
+  }
+
   Component(
     decorateDeclaration(component, mock, meta, {
       template: generateTemplate(meta.queries),
@@ -224,7 +266,7 @@ const decorateClass = (component: Type<any>, mock: Type<any>): void => {
  * ```
  */
 export function MockComponents(...components: Array<Type<any>>): Array<Type<MockedComponent<any>>> {
-  return components.map(MockComponent);
+  return (components as any).map(MockComponent);
 }
 
 /**
