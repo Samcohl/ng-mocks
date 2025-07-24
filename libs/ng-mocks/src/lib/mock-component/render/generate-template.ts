@@ -16,9 +16,10 @@ const isTemplateRefQuery = (query: Query): boolean => {
   if (query.read && query.read !== TemplateRef) {
     return false; // ignoring read of instances
   }
-  if (typeof query.selector !== 'string' && !query.read) {
-    return false; // ignoring class selectors if they do not read TemplateRef
-  }
+  // Support both string selectors and class selectors
+  // Class selectors without explicit read should default to component instance, which we support
+  // Class selectors with read: TemplateRef are also supported
+  // Only exclude class selectors with explicit non-TemplateRef read (handled above)
 
   return true;
 };
