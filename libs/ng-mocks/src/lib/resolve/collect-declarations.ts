@@ -26,15 +26,14 @@ const pushDecorator = (decorators: string[], decorator: string): void => {
     decoratorsArray.splice(deleteIndex, 1);
   }
   if (
-    decorator === 'Injectable' ||
-    decorator === 'Pipe' ||
-    decorator === 'Directive' ||
-    decorator === 'Component' ||
-    decorator === 'NgModule'
+    (decorator === 'Injectable' ||
+      decorator === 'Pipe' ||
+      decorator === 'Directive' ||
+      decorator === 'Component' ||
+      decorator === 'NgModule') &&
+    decoratorsArray.push
   ) {
-    if (decoratorsArray.push) {
-      decoratorsArray.push(decorator);
-    }
+    decoratorsArray.push(decorator);
   }
 };
 
@@ -52,10 +51,8 @@ const getAllKeys = <T extends { [key: string]: any }>(instance: T): Array<keyof 
   } else {
     // Fallback for environments without Object.keys
     for (const key in instance) {
-      if (instance.hasOwnProperty && instance.hasOwnProperty(key)) {
-        if (propsArray.push) {
-          propsArray.push(key);
-        }
+      if (Object.prototype.hasOwnProperty.call(instance, key) && propsArray.push) {
+        propsArray.push(key);
       }
     }
   }
@@ -280,11 +277,7 @@ const parsePropMetadataParserHostBinding = (
   }
   const hostBindingsArray = declaration.hostBindings as any;
   if (hostBindingsArray.push) {
-    hostBindingsArray.push([
-      prop,
-      decorator.hostPropertyName || prop,
-      ...(decorator.args ? [decorator.args] : []),
-    ]);
+    hostBindingsArray.push([prop, decorator.hostPropertyName || prop, ...(decorator.args ? [decorator.args] : [])]);
   }
 };
 
@@ -502,7 +495,7 @@ const parsePropDecorators = (
             ngMetadataName?: string;
           };
         };
-      }>
+      }>;
     };
   },
   declaration: Declaration,

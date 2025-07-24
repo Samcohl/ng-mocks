@@ -219,9 +219,9 @@ class ComponentMockBase extends LegacyControlValueAccessor implements AfterViewI
           const { $implicit, variables } =
             configRenderObj[block] === true
               ? {
-                  $implicit: undefined,
-                  variables: {},
-                }
+                $implicit: undefined,
+                variables: {},
+              }
               : configRenderObj[block];
           (this as any).__render(block, $implicit, variables);
         }
