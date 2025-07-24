@@ -4,9 +4,47 @@
 // Detection d'un composant avec des signaux dans un environnement de test
 // et ajout automatique des mocks appropriés
 
-import { Input, Output } from '@angular/core';
+import { Input, Output, reflectComponentType } from '@angular/core';
 
 import { AnyType } from '../common/core.types';
+import funcDirectiveIoParse from '../common/func.directive-io-parse';
+
+// Helper function to create proper signal mocks
+const createSignalMock = (initialValue?: any) => {
+    const signal = function (this: any) {
+        return initialValue;
+    };
+
+    // Add signal-specific methods
+    signal.set = function (_value: any) {
+        // Mock set implementation
+    };
+
+    signal.update = function (_updateFn: any) {
+        // Mock update implementation
+    };
+
+    signal.asReadonly = function () {
+        return signal;
+    };
+
+    return signal;
+};
+
+// Helper function to create output signal mocks
+const createOutputSignalMock = () => {
+    const outputSignal = {
+        emit: function (_value?: any) {
+            // Mock emit implementation
+        },
+        subscribe: function (_callback: any) {
+            // Mock subscribe implementation
+            return { unsubscribe: function () { } };
+        }
+    };
+
+    return outputSignal;
+};
 
 // Cette fonction sera appelée lors de la création d'un mock de composant
 export const applySignalSupport = (original: AnyType<any>, mock: AnyType<any>): void => {
@@ -16,7 +54,75 @@ export const applySignalSupport = (original: AnyType<any>, mock: AnyType<any>): 
     }
 
     try {
-        // Analyser les propriétés pour détecter les signaux
+        // First try using Angular's official reflectComponentType API
+        // This is the same approach used in collect-declarations.ts
+        try {
+            const mirror = reflectComponentType(original);
+
+            if (mirror?.inputs) {
+                for (const input of mirror.inputs) {
+                    const { name, alias } = funcDirectiveIoParse({
+                        name: input.propName,
+                        alias: input.templateName === input.propName ? undefined : input.templateName,
+                    });
+
+                    // Create signal mock for input
+                    const signalMock = createSignalMock();
+
+                    const objectGlobal = (globalThis as any).Object || {};
+                    if (objectGlobal.defineProperty) {
+                        objectGlobal.defineProperty(mock.prototype, name, {
+                            value: signalMock,
+                            writable: true,
+                            configurable: true
+                        });
+                    }
+
+                    // Also add traditional @Input for compatibility
+                    try {
+                        Input(alias)(mock.prototype, name);
+                    } catch (e) {
+                        // Ignore if Input decorator fails
+                    }
+                }
+            }
+
+            if (mirror?.outputs) {
+                for (const output of mirror.outputs) {
+                    const { name, alias } = funcDirectiveIoParse({
+                        name: output.propName,
+                        alias: output.templateName === output.propName ? undefined : output.templateName,
+                    });
+
+                    // Create output signal mock
+                    const outputMock = createOutputSignalMock();
+
+                    const objectGlobal = (globalThis as any).Object || {};
+                    if (objectGlobal.defineProperty) {
+                        objectGlobal.defineProperty(mock.prototype, name, {
+                            value: outputMock,
+                            writable: true,
+                            configurable: true
+                        });
+                    }
+
+                    // Also add traditional @Output for compatibility
+                    try {
+                        Output(alias)(mock.prototype, name);
+                    } catch (e) {
+                        // Ignore if Output decorator fails
+                    }
+                }
+            }
+
+            // If reflectComponentType worked, we're done
+            return;
+
+        } catch (reflectionError) {
+            // reflectComponentType failed, fall back to name-based detection
+        }
+
+        // Fallback: Analyser les propriétés pour détecter les signaux (original approach)
         const prototype = original.prototype || {};
         const objectGlobal = (globalThis as any).Object || {};
         const propNames = objectGlobal.getOwnPropertyNames ?
@@ -36,121 +142,119 @@ export const applySignalSupport = (original: AnyType<any>, mock: AnyType<any>): 
                     continue;
                 }
 
-                // Pour les signaux, Angular va souvent avoir des propriétés ou des descripteurs spéciaux
-                // Nous allons détecter les signaux par leurs noms et leurs patterns
-
-                if (propName.includes('Signal') ||
+                // Enhanced signal detection patterns
+                const isSignalInput = propName.includes('Signal') ||
                     propName.includes('input') ||
-                    propName.includes('output') ||
-                    propName.includes('model') ||
-                    propName.includes('contentChild')) {
+                    propName.endsWith('Input') ||
+                    propName.startsWith('input');
 
-                    // Créer un mock approprié basé sur le nom
-                    if (propName.includes('input') || propName.includes('Input')) {
-                        // Mock pour input signal
-                        const mockInputSignal = function (this: any) {
-                            return undefined;
-                        };
-                        const objectGlobal = (globalThis as any).Object || {};
-                        if (objectGlobal.defineProperty) {
-                            objectGlobal.defineProperty(mock.prototype, propName, {
-                                value: mockInputSignal,
-                                writable: true,
-                                configurable: true
-                            });
-                        }
+                const isSignalOutput = propName.includes('output') ||
+                    propName.endsWith('Output') ||
+                    propName.startsWith('output');
 
-                        // Aussi ajouter comme @Input traditionnel pour la compatibilité
-                        try {
-                            Input()(mock.prototype, propName);
-                        } catch (e) {
-                            // Ignore si l'Input decorator échoue
-                        }
+                const isSignalModel = propName.includes('model') ||
+                    propName.endsWith('Model') ||
+                    propName.startsWith('model');
+
+                if (isSignalInput) {
+                    // Mock pour input signal
+                    const mockInputSignal = createSignalMock();
+                    const objectGlobal = (globalThis as any).Object || {};
+                    if (objectGlobal.defineProperty) {
+                        objectGlobal.defineProperty(mock.prototype, propName, {
+                            value: mockInputSignal,
+                            writable: true,
+                            configurable: true
+                        });
                     }
 
-                    else if (propName.includes('output') || propName.includes('Output')) {
-                        // Mock pour output signal
-                        const mockOutputSignal = {
-                            emit: function (_value?: any) {
-                                // Mock emit implementation
-                            }
-                        };
-                        const objectGlobal = (globalThis as any).Object || {};
-                        if (objectGlobal.defineProperty) {
-                            objectGlobal.defineProperty(mock.prototype, propName, {
-                                value: mockOutputSignal,
-                                writable: true,
-                                configurable: true
-                            });
-                        }
-
-                        // Aussi ajouter comme @Output traditionnel pour la compatibilité
-                        try {
-                            Output()(mock.prototype, propName);
-                        } catch (e) {
-                            // Ignore si l'Output decorator échoue
-                        }
-                    }
-
-                    else if (propName.includes('model') || propName.includes('Model')) {
-                        // Mock pour model signal
-                        const mockModelSignal = function (this: any) {
-                            return undefined;
-                        };
-                        mockModelSignal.set = function (_value: any) {
-                            // Mock set implementation
-                        };
-                        mockModelSignal.update = function (_updateFn: any) {
-                            // Mock update implementation
-                        };
-                        const objectGlobal = (globalThis as any).Object || {};
-                        if (objectGlobal.defineProperty) {
-                            objectGlobal.defineProperty(mock.prototype, propName, {
-                                value: mockModelSignal,
-                                writable: true,
-                                configurable: true
-                            });
-                        }
-                    }
-
-                    else if (propName.includes('contentChild')) {
-                        // Mock pour contentChild signal
-                        const mockContentChildSignal = function (this: any) {
-                            return undefined;
-                        };
-                        const objectGlobal = (globalThis as any).Object || {};
-                        if (objectGlobal.defineProperty) {
-                            objectGlobal.defineProperty(mock.prototype, propName, {
-                                value: mockContentChildSignal,
-                                writable: true,
-                                configurable: true
-                            });
-                        }
-                    }
-
-                    else if (propName.includes('contentChildren')) {
-                        // Mock pour contentChildren signal
-                        const mockContentChildrenSignal = function (this: any) {
-                            return [];
-                        };
-                        const objectGlobal = (globalThis as any).Object || {};
-                        if (objectGlobal.defineProperty) {
-                            objectGlobal.defineProperty(mock.prototype, propName, {
-                                value: mockContentChildrenSignal,
-                                writable: true,
-                                configurable: true
-                            });
-                        }
+                    // Aussi ajouter comme @Input traditionnel pour la compatibilité
+                    try {
+                        Input()(mock.prototype, propName);
+                    } catch (e) {
+                        // Ignore si l'Input decorator échoue
                     }
                 }
+
+                else if (isSignalOutput) {
+                    // Mock pour output signal
+                    const mockOutputSignal = createOutputSignalMock();
+                    const objectGlobal = (globalThis as any).Object || {};
+                    if (objectGlobal.defineProperty) {
+                        objectGlobal.defineProperty(mock.prototype, propName, {
+                            value: mockOutputSignal,
+                            writable: true,
+                            configurable: true
+                        });
+                    }
+
+                    // Aussi ajouter comme @Output traditionnel pour la compatibilité
+                    try {
+                        Output()(mock.prototype, propName);
+                    } catch (e) {
+                        // Ignore si l'Output decorator échoue
+                    }
+                }
+
+                else if (isSignalModel) {
+                    // Mock pour model signal (two-way binding)
+                    const mockModelSignal = createSignalMock();
+                    const objectGlobal = (globalThis as any).Object || {};
+                    if (objectGlobal.defineProperty) {
+                        objectGlobal.defineProperty(mock.prototype, propName, {
+                            value: mockModelSignal,
+                            writable: true,
+                            configurable: true
+                        });
+                    }
+
+                    // Model signals need both input and output
+                    try {
+                        Input()(mock.prototype, propName);
+                        Output()(mock.prototype, `${propName}Change`);
+                    } catch (e) {
+                        // Ignore if decorators fail
+                    }
+                }
+
             } catch (propError) {
-                // Ignore les erreurs de propriété individuelle
-                continue;
+                // Continue si une propriété individuelle échoue
             }
         }
 
     } catch (error) {
         // Si la détection échoue, ne pas faire échouer la création du mock
-        // console.warn('ng-mocks: Signal detection failed for component', original.name, error);
     }
+};
+
+// Enhanced function to check if a component likely uses signals
+export const hasSignalSupport = (component: AnyType<any>): boolean => {
+    if (!component || typeof component !== 'function') {
+        return false;
+    }
+
+    try {
+        // Try reflectComponentType first
+        const mirror = reflectComponentType(component);
+        const inputsArray = mirror?.inputs as any;
+        const outputsArray = mirror?.outputs as any;
+        if ((inputsArray && inputsArray.length > 0) || (outputsArray && outputsArray.length > 0)) {
+            return true;
+        }
+    } catch {
+        // Fall back to other detection methods
+    }
+
+    // Check for signal-related properties in prototype
+    const prototype = component.prototype || {};
+    const objectGlobal = (globalThis as any).Object || {};
+    const propNames = objectGlobal.getOwnPropertyNames ?
+        objectGlobal.getOwnPropertyNames(prototype) : [];
+
+    return propNames.some((prop: any) =>
+        prop.includes('Signal') ||
+        prop.includes('input') ||
+        prop.includes('output') ||
+        prop.includes('model')
+    );
 };
