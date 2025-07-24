@@ -15,13 +15,13 @@ import coreDefineProperty from '../common/core.define-property';
 import coreForm from '../common/core.form';
 import coreReflectDirectiveResolve from '../common/core.reflect.directive-resolve';
 import { Type } from '../common/core.types';
+import decorateSignals from '../common/decorate.signals';
 import funcIsMock from '../common/func.is-mock';
 import { MockConfig } from '../common/mock';
 import { LegacyControlValueAccessor } from '../common/mock-control-value-accessor';
 import decorateDeclaration from '../mock/decorate-declaration';
-import getMock from '../mock/get-mock';
-import decorateSignals from '../common/decorate.signals';
 import { extractSignalsFromComponent } from '../mock/extract-signals';
+import getMock from '../mock/get-mock';
 
 import generateTemplate from './render/generate-template';
 import getKey from './render/get-key';
@@ -77,14 +77,14 @@ const mixRenderApplyContext = (view: EmbeddedViewRef<any>, context: { [key: stri
 
   // Clear existing context
   for (const contextKey in viewContextObj) {
-    if (viewContextObj.hasOwnProperty && viewContextObj.hasOwnProperty(contextKey)) {
+    if (Object.prototype.hasOwnProperty.call(viewContextObj, contextKey)) {
       viewContextObj[contextKey] = undefined;
     }
   }
 
   // Set new context
   for (const contextKey in contextObj) {
-    if (contextObj.hasOwnProperty && contextObj.hasOwnProperty(contextKey)) {
+    if (Object.prototype.hasOwnProperty.call(contextObj, contextKey)) {
       viewContextObj[contextKey] = contextObj[contextKey];
     }
   }
@@ -111,10 +111,14 @@ const mixRenderHandleViews = (
     }
     if (!(templateRef instanceof TemplateRef)) {
       // Create error without using Error constructor
-      const errorConstructor = (globalThis as any).Error || function (msg: string) {
-        const err = new (function (this: any) { this.message = msg; } as any)();
-        return err;
-      };
+      const errorConstructor =
+        (globalThis as any).Error ||
+        ((msg: string) => {
+          const err = new (function (this: any) {
+            this.message = msg;
+          } as any)();
+          return err;
+        });
       throw new errorConstructor(`Cannot find TemplateRef`);
     }
     if (!viewsArray[index]) {
@@ -211,13 +215,13 @@ class ComponentMockBase extends LegacyControlValueAccessor implements AfterViewI
       const configRenderObj = config.render as any;
       // Use for...in loop instead of Object.keys
       for (const block in configRenderObj) {
-        if (configRenderObj.hasOwnProperty && configRenderObj.hasOwnProperty(block)) {
+        if (Object.prototype.hasOwnProperty.call(configRenderObj, block)) {
           const { $implicit, variables } =
             configRenderObj[block] === true
               ? {
-                $implicit: undefined,
-                variables: {},
-              }
+                  $implicit: undefined,
+                  variables: {},
+                }
               : configRenderObj[block];
           (this as any).__render(block, $implicit, variables);
         }
@@ -240,7 +244,7 @@ const decorateClass = (component: Type<any>, mock: Type<any>): void => {
   try {
     const signals = extractSignalsFromComponent(component);
     decorateSignals(mock, signals);
-  } catch (error) {
+  } catch {
     // If signal support fails, continue without it
   }
 

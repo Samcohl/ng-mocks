@@ -6,46 +6,51 @@ import { Component } from '@angular/core';
 // Simule les nouvelles APIs de signaux d'Angular (peut ne pas être disponible dans toutes les versions)
 // Ces fonctions peuvent ne pas exister selon la version d'Angular
 const mockInput = (defaultValue?: any) => {
-    return () => defaultValue;
+  return () => defaultValue;
 };
 
 const mockOutput = () => {
-    return {
-        emit: (value: any) => {
-            console.log('Mock output emit:', value);
-        }
-    };
+  return {
+    emit: (value: any) => {
+      // Mock output emit behavior
+      void value;
+    },
+  };
 };
 
 const mockModel = (defaultValue?: any) => {
-    const value = defaultValue;
-    const fn = () => value;
-    fn.set = (newValue: any) => { /* mock set */ };
-    fn.update = (updateFn: any) => { /* mock update */ };
-    return fn;
+  const value = defaultValue;
+  const fn = () => value;
+  fn.set = () => {
+    /* mock set */
+  };
+  fn.update = () => {
+    /* mock update */
+  };
+  return fn;
 };
 
 const mockContentChild = () => {
-    return () => undefined;
+  return () => undefined;
 };
 
 const mockContentChildren = () => {
-    return () => [];
+  return () => [];
 };
 
 // Composant de test pour analyser les métadonnées
 @Component({
-    selector: 'test-signals-component',
-    template: '<div>Test component</div>',
-    standalone: false,
+  selector: 'test-signals-component',
+  template: '<div>Test component</div>',
+  standalone: false,
 })
 class TestSignalsComponent {
-    // Simuler les signaux - ces propriétés seront analysées
-    inputSignal = mockInput('default');
-    outputSignal = mockOutput();
-    modelSignal = mockModel('default-model');
-    contentChildSignal = mockContentChild();
-    contentChildrenSignal = mockContentChildren();
+  // Simuler les signaux - ces propriétés seront analysées
+  inputSignal = mockInput('default');
+  outputSignal = mockOutput();
+  modelSignal = mockModel('default-model');
+  contentChildSignal = mockContentChild();
+  contentChildrenSignal = mockContentChildren();
 }
 
 // Export pour les tests
