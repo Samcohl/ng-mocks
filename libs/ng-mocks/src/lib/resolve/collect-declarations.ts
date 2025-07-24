@@ -1,4 +1,4 @@
-import { ɵReflectionCapabilities as ReflectionCapabilities } from '@angular/core';
+import { ɵReflectionCapabilities as ReflectionCapabilities, reflectComponentType } from '@angular/core';
 
 import coreDefineProperty from '../common/core.define-property';
 import { AnyDeclaration, DirectiveIo } from '../common/core.types';
@@ -6,31 +6,24 @@ import funcDirectiveIoBuild from '../common/func.directive-io-build';
 import funcDirectiveIoParse from '../common/func.directive-io-parse';
 
 interface Declaration {
-  host: Record<string, string | undefined>;
+  host: { [key: string]: string | undefined };
   hostBindings: Array<[string, string?, ...any[]]>;
   hostListeners: Array<[string, string?, ...any[]]>;
   attributes: string[];
   inputs: Array<DirectiveIo>;
   outputs: Array<DirectiveIo>;
-  propDecorators: Record<string, any[]>;
-  queries: Record<string, any>;
+  propDecorators: { [key: string]: any[] };
+  queries: { [key: string]: any };
   decorators: Array<'Injectable' | 'Pipe' | 'Directive' | 'Component' | 'NgModule'>;
   standalone?: boolean;
-  // Support des signaux Angular
-  signals?: {
-    inputs?: string[];
-    outputs?: string[];
-    models?: string[];
-    contentChild?: string[];
-    contentChildren?: string[];
-  };
   [key: string]: any;
 }
 
 const pushDecorator = (decorators: string[], decorator: string): void => {
-  const deleteIndex = decorators.indexOf(decorator);
-  if (deleteIndex !== -1) {
-    decorators.splice(deleteIndex, 1);
+  const decoratorsArray = decorators as any;
+  const deleteIndex = decoratorsArray.indexOf ? decoratorsArray.indexOf(decorator) : -1;
+  if (deleteIndex !== -1 && decoratorsArray.splice) {
+    decoratorsArray.splice(deleteIndex, 1);
   }
   if (
     decorator === 'Injectable' ||
@@ -39,20 +32,38 @@ const pushDecorator = (decorators: string[], decorator: string): void => {
     decorator === 'Component' ||
     decorator === 'NgModule'
   ) {
-    decorators.push(decorator);
+    if (decoratorsArray.push) {
+      decoratorsArray.push(decorator);
+    }
   }
 };
 
-const getAllKeys = <T extends Record<keyof any, any>>(instance: T): Array<keyof T> => {
+const getAllKeys = <T extends { [key: string]: any }>(instance: T): Array<keyof T> => {
   const props: string[] = [];
-  for (const key of Object.keys(instance)) {
-    props.push(key);
+  const propsArray = props as any;
+  const objectGlobal = (globalThis as any).Object || {};
+  if (objectGlobal.keys) {
+    const keys = objectGlobal.keys(instance);
+    for (const key of keys) {
+      if (propsArray.push) {
+        propsArray.push(key);
+      }
+    }
+  } else {
+    // Fallback for environments without Object.keys
+    for (const key in instance) {
+      if (instance.hasOwnProperty && instance.hasOwnProperty(key)) {
+        if (propsArray.push) {
+          propsArray.push(key);
+        }
+      }
+    }
   }
 
   return props as never;
 };
 
-const createDeclarations = (parent: Partial<Declaration>): Declaration => ({
+const createDeclarations = (parent: { [K in keyof Declaration]?: Declaration[K] }): Declaration => ({
   host: parent.host ? { ...parent.host } : {},
   hostBindings: parent.hostBindings ? [...parent.hostBindings] : [],
   hostListeners: parent.hostListeners ? [...parent.hostListeners] : [],
@@ -63,6 +74,32 @@ const createDeclarations = (parent: Partial<Declaration>): Declaration => ({
   queries: parent.queries ? { ...parent.queries } : {},
   decorators: parent.decorators ? [...parent.decorators] : [],
 });
+
+const addUniqueDirectiveIo = (
+  declaration: Declaration,
+  key: 'inputs' | 'outputs',
+  name: string,
+  alias: string | undefined,
+  required: boolean | undefined,
+): void => {
+  const normalizedDef = funcDirectiveIoBuild({ name, alias, required });
+
+  for (const def of declaration[key]) {
+    if (def === normalizedDef) {
+      return;
+    }
+
+    const { name: defName, alias: defAlias } = funcDirectiveIoParse(def);
+    if (defName === name && defAlias === alias) {
+      return;
+    }
+  }
+
+  const declarationArray = declaration[key] as any;
+  if (declarationArray.unshift) {
+    declarationArray.unshift(normalizedDef);
+  }
+};
 
 const parseParameters = (
   def: {
@@ -82,14 +119,20 @@ const parseParameters = (
   },
   declaration: Declaration,
 ): void => {
-  if (Object.prototype.hasOwnProperty.call(def, '__parameters__') && def.__parameters__) {
+  const objectGlobal = (globalThis as any).Object || {};
+  const hasOwnProp = objectGlobal.prototype && objectGlobal.prototype.hasOwnProperty;
+  if (hasOwnProp && hasOwnProp.call(def, '__parameters__') && def.__parameters__) {
     for (const decorators of def.__parameters__) {
       for (const decorator of decorators || []) {
         if (
           decorator.ngMetadataName === 'Attribute' &&
-          declaration.attributes.indexOf(decorator.attributeName) === -1
+          (declaration.attributes as any).indexOf &&
+          (declaration.attributes as any).indexOf(decorator.attributeName) === -1
         ) {
-          declaration.attributes.push(decorator.attributeName);
+          const attributesArray = declaration.attributes as any;
+          if (attributesArray.push) {
+            attributesArray.push(decorator.attributeName);
+          }
         }
       }
     }
@@ -104,7 +147,9 @@ const parseAnnotations = (
   },
   declaration: Declaration,
 ): void => {
-  if (Object.prototype.hasOwnProperty.call(def, '__annotations__') && def.__annotations__) {
+  const objectGlobal = (globalThis as any).Object || {};
+  const hasOwnProp = objectGlobal.prototype && objectGlobal.prototype.hasOwnProperty;
+  if (hasOwnProp && hasOwnProp.call(def, '__annotations__') && def.__annotations__) {
     for (const annotation of def.__annotations__) {
       const ngMetadataName = annotation?.ngMetadataName;
       if (!ngMetadataName) {
@@ -129,7 +174,9 @@ const parseDecorators = (
   },
   declaration: Declaration,
 ): void => {
-  if (Object.prototype.hasOwnProperty.call(def, 'decorators') && def.decorators) {
+  const objectGlobal = (globalThis as any).Object || {};
+  const hasOwnProp = objectGlobal.prototype && objectGlobal.prototype.hasOwnProperty;
+  if (hasOwnProp && hasOwnProp.call(def, 'decorators') && def.decorators) {
     for (const decorator of def.decorators) {
       const ngMetadataName = decorator?.type?.prototype?.ngMetadataName;
       if (!ngMetadataName) {
@@ -159,25 +206,7 @@ const parsePropMetadataParserFactoryProp =
         required: decorator.required,
       });
 
-      const normalizedDef = funcDirectiveIoBuild({ name, alias, required });
-
-      let add = true;
-      for (const def of declaration[key]) {
-        if (def === normalizedDef) {
-          add = false;
-          break;
-        }
-
-        const { name: defName, alias: defAlias, required: defRequired } = funcDirectiveIoParse(def);
-        if (defName === name && defAlias === alias && defRequired === required) {
-          add = false;
-          break;
-        }
-      }
-
-      if (add) {
-        declaration[key].unshift(normalizedDef);
-      }
+      addUniqueDirectiveIo(declaration, key, name, alias, required);
     };
 const parsePropMetadataParserInput = parsePropMetadataParserFactoryProp('inputs');
 const parsePropMetadataParserOutput = parsePropMetadataParserFactoryProp('outputs');
@@ -249,11 +278,14 @@ const parsePropMetadataParserHostBinding = (
   if (!declaration.host[key]) {
     declaration.host[key] = prop;
   }
-  declaration.hostBindings.push([
-    prop,
-    decorator.hostPropertyName || prop,
-    ...(decorator.args ? [decorator.args] : []),
-  ]);
+  const hostBindingsArray = declaration.hostBindings as any;
+  if (hostBindingsArray.push) {
+    hostBindingsArray.push([
+      prop,
+      decorator.hostPropertyName || prop,
+      ...(decorator.args ? [decorator.args] : []),
+    ]);
+  }
 };
 
 const parsePropMetadataParserHostListener = (
@@ -269,7 +301,10 @@ const parsePropMetadataParserHostListener = (
   if (!declaration.host[key]) {
     declaration.host[key] = `${prop}($event)`;
   }
-  declaration.hostListeners.push([prop, decorator.eventName || prop, ...(decorator.args ? [decorator.args] : [])]);
+  const hostListenersArray = declaration.hostListeners as any;
+  if (hostListenersArray.push) {
+    hostListenersArray.push([prop, decorator.eventName || prop, ...(decorator.args ? [decorator.args] : [])]);
+  }
 };
 
 const parsePropMetadataMap: any = {
@@ -285,11 +320,13 @@ const parsePropMetadataMap: any = {
 
 const parsePropMetadata = (
   def: {
-    __prop__metadata__?: Record<keyof any, any[]>;
+    __prop__metadata__?: { [key: string]: any[] };
   },
   declaration: Declaration,
 ): void => {
-  if (Object.prototype.hasOwnProperty.call(def, '__prop__metadata__') && def.__prop__metadata__) {
+  const objectGlobal = (globalThis as any).Object || {};
+  const hasOwnProp = objectGlobal.prototype && objectGlobal.prototype.hasOwnProperty;
+  if (hasOwnProp && hasOwnProp.call(def, '__prop__metadata__') && def.__prop__metadata__) {
     for (const prop of getAllKeys(def.__prop__metadata__)) {
       const decorators: Array<{
         ngMetadataName?: string;
@@ -321,6 +358,42 @@ const parseNgDef = (
   }
   if (declaration.standalone === undefined && def.ɵpipe?.standalone !== undefined) {
     declaration.standalone = def.ɵpipe.standalone;
+  }
+};
+
+/**
+ * Note: This does not seem to work in every environment (e.g. the tests)
+ *       and is therefore a supplementary support for signals.
+ */
+const parseReflectComponentType = (def: any, declaration: Declaration): void => {
+  if (typeof def === 'function') {
+    try {
+      const mirror = reflectComponentType(def);
+      if (mirror?.inputs) {
+        for (const input of mirror.inputs) {
+          const { name, alias, required } = funcDirectiveIoParse({
+            name: input.propName,
+            alias: input.templateName === input.propName ? undefined : input.templateName,
+            required: undefined, // reflectComponentType doesn't provide required info for signal inputs
+          });
+
+          addUniqueDirectiveIo(declaration, 'inputs', name, alias, required);
+        }
+      }
+
+      if (mirror?.outputs) {
+        for (const output of mirror.outputs) {
+          const { name, alias, required } = funcDirectiveIoParse({
+            name: output.propName,
+            alias: output.templateName === output.propName ? undefined : output.templateName,
+          });
+
+          addUniqueDirectiveIo(declaration, 'outputs', name, alias, required);
+        }
+      }
+    } catch {
+      // reflectComponentType may fail for non-components or incompatible types
+    }
   }
 };
 
@@ -357,11 +430,13 @@ const parsePropDecoratorsParserFactoryQuery =
       declaration: Declaration,
     ): void => {
       if (!declaration.queries[prop]) {
+        const argsArray = decorator.args as any;
+        const extraArgs = argsArray && argsArray.length > 1 && argsArray[1] ? argsArray[1] : {};
         declaration.queries[prop] = {
           isViewQuery,
           ngMetadataName,
           selector: decorator.args[0],
-          ...decorator.args[1],
+          ...extraArgs,
         };
       }
     };
@@ -376,11 +451,15 @@ const parsePropDecoratorsParserHostBinding = (
   },
   declaration: Declaration,
 ): void => {
-  const key = `[${decorator.args?.[0] || prop}]`;
+  const argsArray = decorator.args as any;
+  const key = `[${argsArray && argsArray[0] ? argsArray[0] : prop}]`;
   if (!declaration.host[key]) {
     declaration.host[key] = prop;
   }
-  declaration.hostBindings.push([prop, ...(decorator.args || [])]);
+  const hostBindingsArray = declaration.hostBindings as any;
+  if (hostBindingsArray.push) {
+    hostBindingsArray.push([prop, ...(decorator.args || [])]);
+  }
 };
 
 const parsePropDecoratorsParserHostListener = (
@@ -391,11 +470,15 @@ const parsePropDecoratorsParserHostListener = (
   },
   declaration: Declaration,
 ): void => {
-  const key = `(${decorator.args?.[0] || prop})`;
+  const argsArray = decorator.args as any;
+  const key = `(${argsArray && argsArray[0] ? argsArray[0] : prop})`;
   if (!declaration.host[key]) {
     declaration.host[key] = `${prop}($event)`;
   }
-  declaration.hostListeners.push([prop, ...(decorator.args || [])]);
+  const hostListenersArray = declaration.hostListeners as any;
+  if (hostListenersArray.push) {
+    hostListenersArray.push([prop, ...(decorator.args || [])]);
+  }
 };
 
 const parsePropDecoratorsMap: any = {
@@ -411,9 +494,8 @@ const parsePropDecoratorsMap: any = {
 
 const parsePropDecorators = (
   def: {
-    propDecorators?: Record<
-      string,
-      Array<{
+    propDecorators?: {
+      [key: string]: Array<{
         args: any;
         type?: {
           prototype?: {
@@ -421,11 +503,13 @@ const parsePropDecorators = (
           };
         };
       }>
-    >;
+    };
   },
   declaration: Declaration,
 ): void => {
-  if (Object.prototype.hasOwnProperty.call(def, 'propDecorators') && def.propDecorators) {
+  const objectGlobal = (globalThis as any).Object || {};
+  const hasOwnProp = objectGlobal.prototype && objectGlobal.prototype.hasOwnProperty;
+  if (hasOwnProp && hasOwnProp.call(def, 'propDecorators') && def.propDecorators) {
     for (const prop of getAllKeys(def.propDecorators)) {
       declaration.propDecorators[prop] = [...(declaration.propDecorators[prop] || []), ...def.propDecorators[prop]];
       for (const decorator of def.propDecorators[prop]) {
@@ -475,11 +559,13 @@ const parse = (def: any): any => {
     return {};
   }
 
-  if (Object.prototype.hasOwnProperty.call(def, '__ngMocksParsed')) {
+  const objectGlobal = (globalThis as any).Object || {};
+  const hasOwnProp = objectGlobal.prototype && objectGlobal.prototype.hasOwnProperty;
+  if (hasOwnProp && hasOwnProp.call(def, '__ngMocksParsed')) {
     return def.__ngMocksDeclarations;
   }
 
-  const parent = Object.getPrototypeOf(def);
+  const parent = objectGlobal.getPrototypeOf ? objectGlobal.getPrototypeOf(def) : null;
   const parentDeclarations = parent ? parse(parent) : {};
   const declaration = createDeclarations(parentDeclarations);
   coreDefineProperty(def, '__ngMocksParsed', true);
@@ -489,6 +575,7 @@ const parse = (def: any): any => {
   parsePropDecorators(def, declaration);
   parsePropMetadata(def, declaration);
   parseNgDef(def, declaration);
+  parseReflectComponentType(def, declaration);
   buildDeclaration(declaration.Directive, declaration);
   buildDeclaration(declaration.Component, declaration);
   buildDeclaration(declaration.Pipe, declaration);
